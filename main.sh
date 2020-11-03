@@ -2,7 +2,7 @@
 # author = mirai
 # information = simple backup script, mounts smb share, removes old backups, keeps given amount, copies everything in the given list, unmounts smb share
 # license = you can do whatever you want with it i dont really care
-# version = 0.17
+# version = 0.18
 
 script="$0"
 basename="$(dirname $script)"
@@ -10,8 +10,8 @@ basename="$(dirname $script)"
 # create logger
 exec 40> >(exec logger)
 function log {
-    printf "backup.sh: $1\n"
-    printf "backup.sh: $1\n" >&40
+    printf "simple archival utility: $1\n"
+    printf "simple archival utility: $1\n" >&40
 }
 
 # move to root directory, set execution environment
@@ -168,6 +168,7 @@ exit 0
 # 0.15 moved all the code to functions so its easier to manage and to enable/disable parts of code for testing
 # 0.16 relative path support
 # 0.17 added checks for include and exclude files, wont run without include, wont try to run rsync with exclude if it doesnt exist
+# 0.18 updated logger to reflect a new name
 
 # TODO
 # ???
