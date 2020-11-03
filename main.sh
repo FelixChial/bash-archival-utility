@@ -2,12 +2,10 @@
 # author = mirai
 # information = simple backup script, mounts smb share, removes old backups, keeps given amount, copies everything in the given list, unmounts smb share
 # license = you can do whatever you want with it i dont really care
-# version = 0.14
+# version = 0.16
 
-if [ ! -f config.sh ]; then
-    cp config_example.sh config.sh
-fi
-source config.sh
+script="$0"
+basename="$(dirname $script)"
 
 # create logger
 exec 40> >(exec logger)
@@ -16,6 +14,16 @@ function log {
     printf "backup.sh: $1\n"
     printf "backup.sh: $1\n" >&40
 }
+
+cd "$basename"
+if [ ! -f config.sh ]; then
+    cp config_example.sh config.sh
+    if [[ $? -ne 0 ]]; then
+        log "couldnt find config file"
+        exit 1
+    fi
+fi
+source config.sh
 
 function unmount {
     cd /
@@ -139,6 +147,8 @@ exit 0
 # 0.13 moved configuration to a separate file
 # 0.14 we now prepare tar ball locally and transfer it after, as a result of it if we couldnt connect to the backup location
 #      the backup will be stored in a staging area untill the next run on which it will be transfered along with a fresh one
+# 0.15 moved all the code to functions so its easier to manage and to enable/disable parts of code for testing
+# 0.16 relative path support
 
 # TODO
 # ???
