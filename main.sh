@@ -2,20 +2,22 @@
 # author = mirai
 # information = simple backup script, mounts smb share, removes old backups, keeps given amount, copies everything in the given list, unmounts smb share
 # license = you can do whatever you want with it i dont really care
-# version = 0.16
+# version = 0.17
 
 script="$0"
 basename="$(dirname $script)"
 
 # create logger
 exec 40> >(exec logger)
-
 function log {
     printf "backup.sh: $1\n"
     printf "backup.sh: $1\n" >&40
 }
 
+# move to root directory, set execution environment
 cd "$basename"
+
+# check if config exists
 if [ ! -f config.sh ]; then
     cp config_example.sh config.sh
     if [[ $? -ne 0 ]]; then
@@ -23,7 +25,15 @@ if [ ! -f config.sh ]; then
         exit 1
     fi
 fi
+
+# load config
 source config.sh
+
+# check if include list exists
+if [ ! -f "$backupList" ]; then
+    log "couldnt find include list, aborting..."
+    exit 1
+fi
 
 function unmount {
     cd /
@@ -43,14 +53,20 @@ function setStage {
 # copy the files
 function fillStage {
     log "Copying files using rsync"
-    rsync --recursive --no-links --times --files-from="$backupList" --exclude-from="$excludeList" --exclude "$stagingArea" / "$backupPath" --quiet
+    # check if exclude list exists
+    if [ -f "$excludeList" ]; then
+        rsync --recursive --no-links --times --files-from="$backupList" --exclude-from="$excludeList" --exclude "$stagingArea" / "$backupPath" --quiet
+    else
+        # if it doesnt we've nothing to exclude
+        rsync --recursive --no-links --times --files-from="$backupList" --exclude "$stagingArea" / "$backupPath" --quiet
+    fi
     if [[ $? -ne 0 ]]; then
         log "Something went wrong in the copying process, check the log, aborting..."
         exit 1
     fi
 }
 
-# compress
+# compress staging area
 function compressStage {
     log "Archiving and compressing with tar"
     cd "$stagingArea"
@@ -63,7 +79,7 @@ function compressStage {
     fi
 }
 
-# cleanup
+# cleanup staging area
 function cleanStage {
     log "Removing uncompressed files"
     rm -r "$backupName"
@@ -116,6 +132,8 @@ function disconnectFromRemoteLocation {
     unmount
 }
 
+# invokation routine, comment to disable certain stages
+# useful for debug
 setStage
 fillStage
 compressStage
@@ -149,6 +167,7 @@ exit 0
 #      the backup will be stored in a staging area untill the next run on which it will be transfered along with a fresh one
 # 0.15 moved all the code to functions so its easier to manage and to enable/disable parts of code for testing
 # 0.16 relative path support
+# 0.17 added checks for include and exclude files, wont run without include, wont try to run rsync with exclude if it doesnt exist
 
 # TODO
 # ???
