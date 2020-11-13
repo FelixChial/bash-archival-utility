@@ -2,10 +2,12 @@
 # author = mirai
 # information = simple backup script, mounts smb share, removes old backups, keeps given amount, copies everything in the given list, unmounts smb share
 # license = you can do whatever you want with it i dont really care
-# version = 0.18
+# version = 0.19
 
+# move to the script directory, set execution environment
 script="$0"
 basename="$(dirname $script)"
+cd "$basename"
 
 # create logger
 exec 40> >(exec logger)
@@ -14,14 +16,11 @@ function log {
     printf "simple archival utility: $1\n" >&40
 }
 
-# move to root directory, set execution environment
-cd "$basename"
-
 # check if config exists
 if [ ! -f config.sh ]; then
     cp config_example.sh config.sh
     if [[ $? -ne 0 ]]; then
-        log "couldnt find config file"
+        log "couldnt find config file \naborting..."
         exit 1
     fi
 fi
@@ -29,11 +28,51 @@ fi
 # load config
 source config.sh
 
-# check if include list exists
-if [ ! -f "$backupList" ]; then
-    log "couldnt find include list, aborting..."
-    exit 1
-fi
+function testConfig {
+    misconfigured=0
+    # check if shareLocation variable is set
+    if [ -z "$shareLocation" ]; then
+        misconfigured=1
+        log "shareLocation variable is not set"
+    fi
+    # check if mountPath variable is set
+    if [ -z "$mountPath" ]; then
+        misconfigured=1
+        log "mountPath variable is not set"
+    fi
+    # check if uname variable is set
+    if [ -z "$uname" ]; then
+        misconfigured=1
+        log "uname variable is not set"
+    fi
+    # check if passwd variable is set
+    if [ -z "$passwd" ]; then
+        misconfigured=1
+        log "passwd variable is not set"
+    fi
+    # check if stagingArea variable is set
+    if [ -z "$stagingArea" ]; then
+        misconfigured=1
+        log "stagingArea variable is not set"
+    fi
+    # check if includeList variable is set
+    if [ -z "$includeList" ]; then
+        misconfigured=1
+        log "includeList variable is not set"
+    else
+        # check if include-list exists
+        if [ ! -f "$includeList" ]; then
+            misconfigured=1
+            log "include list doesnt exist"
+        fi
+    fi
+    if [[ misconfigured -gt 0 ]]; then
+        log "something is wrong with the config, check the log for more information \naborting..."
+        exit 1
+    fi
+}
+
+backupPath="$stagingArea/$backupName"
 
 function unmount {
     cd /
@@ -45,7 +84,7 @@ function setStage {
     log "Making backup dir: $backupPath"
     mkdir -p "$backupPath"
     if [[ $? -ne 0 ]]; then
-        log "Couldnt make backup dir, probably we do not have permission, aborting..."
+        log "Couldnt make backup dir, probably we do not have permission \naborting..."
         exit 1
     fi
 }
@@ -55,13 +94,14 @@ function fillStage {
     log "Copying files using rsync"
     # check if exclude list exists
     if [ -f "$excludeList" ]; then
-        rsync --recursive --no-links --times --files-from="$backupList" --exclude-from="$excludeList" --exclude "$stagingArea" / "$backupPath" --quiet
+        rsync --recursive --no-links --times --files-from="$includeList" --exclude-from="$excludeList" --exclude "$stagingArea" / "$backupPath" --quiet
     else
         # if it doesnt we've nothing to exclude
-        rsync --recursive --no-links --times --files-from="$backupList" --exclude "$stagingArea" / "$backupPath" --quiet
+        rsync --recursive --no-links --times --files-from="$includeList" --exclude "$stagingArea" / "$backupPath" --quiet
     fi
     if [[ $? -ne 0 ]]; then
-        log "Something went wrong in the copying process, check the log, aborting..."
+        log "Something went wrong in the copying process, check the log \naborting..."
+        rm -r "$backupPath"
         exit 1
     fi
 }
@@ -74,7 +114,8 @@ function compressStage {
     # --warning=no-file-changed
     exitcode=$?
     if [ "$exitcode" != "1" ] && [ "$exitcode" != "0" ]; then
-        log "Something went wrong in the compression process, check the log, aborting..."
+        log "Something went wrong in the compression process, check the log \naborting..."
+        rm "$backupName.tar.gz"
         exit 1
     fi
 }
@@ -90,9 +131,10 @@ function cleanStage {
 function connectToRemoteLocation {
     umount "$mountPath" --quiet # in case previous run got stuck
     log "Mounting backup share"
+    mkdir -p "$mountPath"
     /usr/sbin/mount.cifs "$shareLocation" "$mountPath" -o username="$uname",password="$passwd"
     if [[ $? -ne 0 ]]; then
-        log "Backup location is unavailable, will try to transfer the backup at a later date..."
+        log "Backup location is unavailable \naborting..."
         unmount
         exit 1
     fi
@@ -101,9 +143,9 @@ function connectToRemoteLocation {
 # moving archive(s) to the backup location
 function sendToRemoteLocation {
     log "Moving the archive to the backup location"
-    rsync --remove-source-files --recursive --times "$stagingArea/" "$mountPath" --quiet
+    rsync --remove-source-files --recursive --times --include='*.tar.gz' --exclude='*' "$stagingArea/" "$mountPath" --quiet
     if [[ $? -ne 0 ]]; then
-        log "Something went wrong in the copying process, check the log, aborting..."
+        log "Something went wrong in the copying process, check the log \naborting..."
         unmount
         exit 1
     fi
@@ -134,6 +176,8 @@ function disconnectFromRemoteLocation {
 
 # invokation routine, comment to disable certain stages
 # useful for debug
+testConfig
+
 setStage
 fillStage
 compressStage
@@ -169,6 +213,8 @@ exit 0
 # 0.16 relative path support
 # 0.17 added checks for include and exclude files, wont run without include, wont try to run rsync with exclude if it doesnt exist
 # 0.18 updated logger to reflect a new name
+# 0.19 added config checks, will abort if required variables are not set, thse includes: shareLocation, mountPath, uname, passwd
+#      (these four required to connect to SMB/CIFS share), staging and includeList, also checks includeList exists
 
 # TODO
 # ???

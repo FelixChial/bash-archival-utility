@@ -10,7 +10,7 @@ passwd=""
 # compression and transfer to the backup location
 stagingArea="staging"
 # list of stuff to backup
-backupList="include-list"
+includeList="include-list"
 # location of exclude file
 excludeList="exclude-list"
 
@@ -18,4 +18,3 @@ excludeList="exclude-list"
 backupsToKeep=10
 
 backupName=$(date +%Y_%m_%d_%H_%M_%S)
-backupPath="$stagingArea/$backupName"
