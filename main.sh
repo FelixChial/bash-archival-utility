@@ -216,5 +216,3 @@ exit 0
 # 0.19 added config checks, will abort if required variables are not set, thse includes: shareLocation, mountPath, uname, passwd
 #      (these four required to connect to SMB/CIFS share), staging and includeList, also checks includeList exists
 
-# TODO
-# ???
