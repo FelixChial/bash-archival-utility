@@ -2,7 +2,7 @@
 # author = mirai
 # information = simple backup script, mounts smb share, removes old backups, keeps given amount, copies everything in the given list, unmounts smb share
 # license = you can do whatever you want with it i dont really care
-# version = 0.19
+# version = 0.20
 
 # move to the script directory, set execution environment
 script="$0"
@@ -14,6 +14,20 @@ exec 40> >(exec logger)
 function log {
     printf "simple archival utility: $1\n"
     printf "simple archival utility: $1\n" >&40
+}
+
+function main {
+    testConfig
+
+    setStage
+    fillStage
+    compressStage
+    cleanStage
+
+    connectToRemoteLocation
+    sendToRemoteLocation
+    cleanRemoteLocation
+    disconnectFromRemoteLocation
 }
 
 # check if config exists
@@ -45,10 +59,10 @@ function testConfig {
         misconfigured=1
         log "uname variable is not set"
     fi
-    # check if passwd variable is set
-    if [ -z "$passwd" ]; then
+    # check if sharePasswd variable is set
+    if [ -z "$sharePasswd" ]; then
         misconfigured=1
-        log "passwd variable is not set"
+        log "sharePasswd variable is not set"
     fi
     # check if stagingArea variable is set
     if [ -z "$stagingArea" ]; then
@@ -110,12 +124,23 @@ function fillStage {
 function compressStage {
     log "Archiving and compressing with tar"
     cd "$stagingArea"
-    tar --create --gzip --file "$backupName.tar.gz" "$backupName/"
-    # --warning=no-file-changed
+    if [ -z "$archivePasswd" ]; then
+        log "WARNING: archive password is not set"
+        log "    proceeding without encryption"
+        tar --create --file - "$backupName/" | 7za a -bso0 -bsp0 -si "$backupName.tar.7z"
+    else
+        tar --create --file - "$backupName/" | 7za a -bso0 -bsp0 -si -p"$archivePasswd" -mhe=on "$backupName.tar.7z"
+    fi
+    # 7za a    : add files (create archive)
+    # -bso0    : disable stdout (quiet)
+    # -bsp0    : disable progress bar
+    # -si      : stdin (piped from tar)
+    # -p       : encrypt with pasword
+    # -mhe=on  : enable header encryption
     exitcode=$?
     if [ "$exitcode" != "1" ] && [ "$exitcode" != "0" ]; then
         log "Something went wrong in the compression process, check the log \naborting..."
-        rm "$backupName.tar.gz"
+        rm "$backupName.tar.7z"
         exit 1
     fi
 }
@@ -132,7 +157,7 @@ function connectToRemoteLocation {
     umount "$mountPath" --quiet # in case previous run got stuck
     log "Mounting backup share"
     mkdir -p "$mountPath"
-    /usr/sbin/mount.cifs "$shareLocation" "$mountPath" -o username="$uname",password="$passwd"
+    /usr/sbin/mount.cifs "$shareLocation" "$mountPath" -o username="$uname",password="$sharePasswd"
     if [[ $? -ne 0 ]]; then
         log "Backup location is unavailable \naborting..."
         unmount
@@ -143,7 +168,7 @@ function connectToRemoteLocation {
 # moving archive(s) to the backup location
 function sendToRemoteLocation {
     log "Moving the archive to the backup location"
-    rsync --remove-source-files --recursive --times --include='*.tar.gz' --exclude='*' "$stagingArea/" "$mountPath" --quiet
+    rsync --remove-source-files --recursive --times --include='*.tar.7z' --exclude='*' "$stagingArea/" "$mountPath" --quiet
     if [[ $? -ne 0 ]]; then
         log "Something went wrong in the copying process, check the log \naborting..."
         unmount
@@ -153,18 +178,20 @@ function sendToRemoteLocation {
 
 # clear old backups
 function cleanRemoteLocation {
-    tailN=$(($backupsToKeep + 1))
-    removeList=()
-    while IFS= read -r line; do
-        removeList+=( "$line" )
-    done < <(ls -tp "$mountPath" |  grep -E '*\.tar\.gz' | tail -n +$tailN)
+    if [[ $backupsToKeep -ne 0 ]]; then
+        tailN=$(($backupsToKeep + 1))
+        removeList=()
+        while IFS= read -r line; do
+            removeList+=( "$line" )
+        done < <(ls -tp "$mountPath" |  grep -E '*\.tar\.7z|*\.tar\.gz' | tail -n +$tailN)
 
-    if (( ${#removeList[@]} )); then
-        log "Removing old backups:"
-        for i in "${removeList[@]}"; do
-            log "    Removing $i"
-            rm "$mountPath/$i"
-        done
+        if (( ${#removeList[@]} )); then
+            log "Removing old backups:"
+            for i in "${removeList[@]}"; do
+                log "    Removing $i"
+                rm "$mountPath/$i"
+            done
+        fi
     fi
 }
 
@@ -174,19 +201,7 @@ function disconnectFromRemoteLocation {
     unmount
 }
 
-# invokation routine, comment to disable certain stages
-# useful for debug
-testConfig
-
-setStage
-fillStage
-compressStage
-cleanStage
-
-connectToRemoteLocation
-sendToRemoteLocation
-cleanRemoteLocation
-disconnectFromRemoteLocation
+main
 
 # dispose logger
 exec 40>&-
@@ -215,4 +230,7 @@ exit 0
 # 0.18 updated logger to reflect a new name
 # 0.19 added config checks, will abort if required variables are not set, thse includes: shareLocation, mountPath, uname, passwd
 #      (these four required to connect to SMB/CIFS share), staging and includeList, also checks includeList exists
-
+# 0.20 now using 7z, allows more effecient compression (LZMA2) and encryption
+#      additional features:
+#          set 'backupsToKeep' to 0 to keep all
+#          set 'archivePaswd' to blank to disable encryption

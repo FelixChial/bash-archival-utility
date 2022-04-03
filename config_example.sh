@@ -4,7 +4,9 @@ shareLocation=""
 mountPath=""
 # smb share credentials
 uname=""
-passwd=""
+sharePasswd=""
+# archive password
+archivePasswd=""
 
 # directory where everything is moved to before
 # compression and transfer to the backup location
