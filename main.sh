@@ -1,8 +1,8 @@
 #!/bin/bash
-# author = mirai
+# author = felixchial
 # information = simple backup script, mounts smb share, removes old backups, keeps given amount, copies everything in the given list, unmounts smb share
 # license = you can do whatever you want with it i dont really care
-# version = 0.20
+# version = 0.21
 
 # move to the script directory, set execution environment
 script="$0"
@@ -96,6 +96,7 @@ function unmount {
 # create directory for new backup
 function setStage {
     log "Making backup dir: $backupPath"
+    find "$stagingArea/" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} \;
     mkdir -p "$backupPath"
     if [[ $? -ne 0 ]]; then
         log "Couldnt make backup dir, probably we do not have permission \naborting..."
@@ -140,6 +141,7 @@ function compressStage {
     exitcode=$?
     if [ "$exitcode" != "1" ] && [ "$exitcode" != "0" ]; then
         log "Something went wrong in the compression process, check the log \naborting..."
+        rm -r "$backupName"
         rm "$backupName.tar.7z"
         exit 1
     fi
@@ -234,3 +236,4 @@ exit 0
 #      additional features:
 #          set 'backupsToKeep' to 0 to keep all
 #          set 'archivePaswd' to blank to disable encryption
+# 0.21 fixed residual files sometimes staying in staging area
