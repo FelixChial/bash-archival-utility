@@ -96,7 +96,7 @@ function unmount {
 # create directory for new backup
 function setStage {
     log "Making backup dir: $backupPath"
-    find "$stagingArea/" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} \;
+    find "$stagingArea/" -mindepth 1 -maxdepth 1 -type d -exec rm -r {} \;
     mkdir -p "$backupPath"
     if [[ $? -ne 0 ]]; then
         log "Couldnt make backup dir, probably we do not have permission \naborting..."
