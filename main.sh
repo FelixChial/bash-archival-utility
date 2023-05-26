@@ -2,7 +2,7 @@
 # author = felixchial
 # information = simple backup script, mounts smb share, removes old backups, keeps given amount, copies everything in the given list, unmounts smb share
 # license = you can do whatever you want with it i dont really care
-# version = 0.21
+# version = 0.22
 
 # move to the script directory, set execution environment
 script="$0"
@@ -24,10 +24,18 @@ function main {
     compressStage
     cleanStage
 
-    connectToRemoteLocation
-    sendToRemoteLocation
-    cleanRemoteLocation
-    disconnectFromRemoteLocation
+    if [[ $useLocal -eq 1 ]]; then
+        copyToLocalLocation
+        cleanLocalLocation
+        setPerms
+    fi
+
+    if [[ $useCIFS -eq 1 ]]; then
+        connectToRemoteLocation
+        sendToRemoteLocation
+        cleanRemoteLocation
+        disconnectFromRemoteLocation
+    fi
 }
 
 # check if config exists
@@ -154,6 +162,54 @@ function cleanStage {
     cd ..
 }
 
+# copy files to local locations
+function copyToLocalLocation {
+    log "Moving the archive to the backup location"
+    for path in ${localBackupPath[@]}; do
+        rsync --recursive --times --include='*.tar.7z' --exclude='*' "$stagingArea/" "$path" --quiet
+        if [[ $? -ne 0 ]]; then
+            log "Something went wrong in the copying process, check the log \naborting..."
+            exit 1
+        fi
+    done
+    rm -r $stagingArea/*
+}
+
+# clean local locations
+function cleanLocalLocation {
+    for path in ${localBackupPath[@]}; do
+        if [[ $backupsToKeep -ne 0 ]]; then
+            tailN=$(($backupsToKeep + 1))
+            removeList=()
+            while IFS= read -r line; do
+                removeList+=( "$line" )
+            done < <(ls -tp "$path" |  grep -E '*\.tar\.7z|*\.tar\.gz' | tail -n +$tailN)
+
+            if (( ${#removeList[@]} )); then
+                log "Removing old backups:"
+                for i in "${removeList[@]}"; do
+                    log "    Removing $i"
+                    rm "$path/$i"
+                done
+            fi
+        fi
+    done
+}
+
+# set permissions to allow sync software to interact with the backup
+# its encrypted anyway (supposedly) so it shouldnt be an issue
+function setPerms {
+    if [[ setPerms -eq 1 ]]; then
+        for path in ${localBackupPath[@]}; do
+            chown -R "$permsUser:$permsUser" "$path"
+            if [[ $? -ne 0 ]]; then
+                log "Something went wrong in the copying process, check the log \naborting..."
+                exit 1
+            fi
+        done
+    fi
+}
+
 # mount the share
 function connectToRemoteLocation {
     umount "$mountPath" --quiet # in case previous run got stuck
@@ -237,3 +293,4 @@ exit 0
 #          set 'backupsToKeep' to 0 to keep all
 #          set 'archivePaswd' to blank to disable encryption
 # 0.21 fixed residual files sometimes staying in staging area
+# 0.22 added Local location, CIFS location is now optional
