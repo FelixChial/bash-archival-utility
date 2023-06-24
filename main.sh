@@ -1,13 +1,15 @@
 #!/bin/bash
 # author = felixchial
 # information = simple backup script, mounts smb share, removes old backups, keeps given amount, copies everything in the given list, unmounts smb share
-# license = you can do whatever you want with it i dont really care
-# version = 0.22
+# license = you can do whatever you want with it i really dont care
+# version = 0.23
+
+# TODO refactor: make code more readable
+# standardize config file, variable names
+# consider filling vars with $wd in runtime
 
 # move to the script directory, set execution environment
-script="$0"
-basename="$(dirname $script)"
-cd "$basename"
+wd=$(dirname $0)
 
 # create logger
 exec 40> >(exec logger)
@@ -17,30 +19,40 @@ function log {
 }
 
 function main {
+#exit
     testConfig
-
+#exit
     setStage
+#exit
     fillStage
+#exit
     compressStage
-    cleanStage
-
+#exit
     if [[ $useLocal -eq 1 ]]; then
         copyToLocalLocation
+#exit
         cleanLocalLocation
+#exit
         setPerms
     fi
-
+#exit
     if [[ $useCIFS -eq 1 ]]; then
         connectToRemoteLocation
+#exit
         sendToRemoteLocation
+#exit
         cleanRemoteLocation
+#exit
         disconnectFromRemoteLocation
     fi
+#exit
+    cleanStage
 }
 
 # check if config exists
-if [ ! -f config.sh ]; then
-    cp config_example.sh config.sh
+if [ ! -f "$wd/config.sh" ]; then
+    cp "$wd/config.sh" "$wd/config.sh.bak"
+    cp "$wd/config_example.sh" "$wd/config.sh"
     if [[ $? -ne 0 ]]; then
         log "couldnt find config file \naborting..."
         exit 1
@@ -48,42 +60,47 @@ if [ ! -f config.sh ]; then
 fi
 
 # load config
-source config.sh
+source "$wd/config.sh"
 
 function testConfig {
     misconfigured=0
-    # check if shareLocation variable is set
-    if [ -z "$shareLocation" ]; then
-        misconfigured=1
-        log "shareLocation variable is not set"
+    if [[ $useCIFS -eq 1 ]]; then
+        # -z checks if string is empty
+        if [ -z "$shareLocation" ]; then
+            misconfigured=1
+            log "shareLocation variable is not set"
+        fi
+        if [ -z "$mountPath" ]; then
+            misconfigured=1
+            log "mountPath variable is not set"
+        fi
+        if [ -z "$uname" ]; then
+            misconfigured=1
+            log "uname variable is not set"
+        fi
+        if [ -z "$sharePasswd" ]; then
+            misconfigured=1
+            log "sharePasswd variable is not set"
+        fi
     fi
-    # check if mountPath variable is set
-    if [ -z "$mountPath" ]; then
-        misconfigured=1
-        log "mountPath variable is not set"
+
+    if [[ $useLocal -eq 1 ]]; then
+        if [ -z "$localBackupPath[0]" ]; then
+            misconfigured=1
+            log "localBackupPath is not set"
+        fi
     fi
-    # check if uname variable is set
-    if [ -z "$uname" ]; then
-        misconfigured=1
-        log "uname variable is not set"
-    fi
-    # check if sharePasswd variable is set
-    if [ -z "$sharePasswd" ]; then
-        misconfigured=1
-        log "sharePasswd variable is not set"
-    fi
-    # check if stagingArea variable is set
+
     if [ -z "$stagingArea" ]; then
         misconfigured=1
         log "stagingArea variable is not set"
     fi
-    # check if includeList variable is set
     if [ -z "$includeList" ]; then
         misconfigured=1
         log "includeList variable is not set"
     else
-        # check if include-list exists
-        if [ ! -f "$includeList" ]; then
+        # -f checks if file exists
+        if [ ! -f "$wd/$includeList" ]; then
             misconfigured=1
             log "include list doesnt exist"
         fi
@@ -94,16 +111,16 @@ function testConfig {
     fi
 }
 
+stagingArea="$wd/$stagingArea"
 backupPath="$stagingArea/$backupName"
 
 function unmount {
-    cd /
     umount "$mountPath"
 }
 
 # create directory for new backup
 function setStage {
-    log "Making backup dir: $backupPath"
+    log "Setting the Stage: mkdir -p $backupPath"
     find "$stagingArea/" -mindepth 1 -maxdepth 1 -type d -exec rm -r {} \;
     mkdir -p "$backupPath"
     if [[ $? -ne 0 ]]; then
@@ -114,13 +131,14 @@ function setStage {
 
 # copy the files
 function fillStage {
-    log "Copying files using rsync"
     # check if exclude list exists
     if [ -f "$excludeList" ]; then
-        rsync --recursive --no-links --times --files-from="$includeList" --exclude-from="$excludeList" --exclude "$stagingArea" / "$backupPath" --quiet
+        log "Filling the Stage: rsync --recursive --no-links --times --files-from=$wd/$includeList --exclude-from=$wd/$excludeList --exclude $stagingArea / $backupPath --quiet"
+        rsync --recursive --no-links --times --files-from="$wd/$includeList" --exclude-from="$wd/$excludeList" --exclude "$stagingArea" / "$backupPath" --quiet
     else
         # if it doesnt we've nothing to exclude
-        rsync --recursive --no-links --times --files-from="$includeList" --exclude "$stagingArea" / "$backupPath" --quiet
+        log "Filling the Stage: rsync --recursive --no-links --times --files-from=$wd/$includeList --exclude $stagingArea / $backupPath --quiet"
+        rsync --recursive --no-links --times --files-from="$wd/$includeList" --exclude "$stagingArea" / "$backupPath" --quiet
     fi
     if [[ $? -ne 0 ]]; then
         log "Something went wrong in the copying process, check the log \naborting..."
@@ -131,14 +149,16 @@ function fillStage {
 
 # compress staging area
 function compressStage {
-    log "Archiving and compressing with tar"
-    cd "$stagingArea"
+    log "Compressing the Stage:"
+    log "    tar --absolute-names --create --file - $backupPath/"
     if [ -z "$archivePasswd" ]; then
         log "WARNING: archive password is not set"
         log "    proceeding without encryption"
-        tar --create --file - "$backupName/" | 7za a -bso0 -bsp0 -si "$backupName.tar.7z"
+        log "    7za a -bso0 -bsp0 -si $backupPath.tar.7z"
+        tar --absolute-names --create --file - "$backupPath/" | 7za a -bso0 -bsp0 -si "$backupPath.tar.7z"
     else
-        tar --create --file - "$backupName/" | 7za a -bso0 -bsp0 -si -p"$archivePasswd" -mhe=on "$backupName.tar.7z"
+        log "    7za a -bso0 -bsp0 -si -p********* -mhe=on $backupPath.tar.7z"
+        tar --absolute-names --create --file - "$backupPath/" | 7za a -bso0 -bsp0 -si -p"$archivePasswd" -mhe=on "$backupPath.tar.7z"
     fi
     # 7za a    : add files (create archive)
     # -bso0    : disable stdout (quiet)
@@ -149,30 +169,22 @@ function compressStage {
     exitcode=$?
     if [ "$exitcode" != "1" ] && [ "$exitcode" != "0" ]; then
         log "Something went wrong in the compression process, check the log \naborting..."
-        rm -r "$backupName"
-        rm "$backupName.tar.7z"
+        rm -r "$backupPath"
+        rm "$backupPath.tar.7z"
         exit 1
     fi
 }
 
-# cleanup staging area
-function cleanStage {
-    log "Removing uncompressed files"
-    rm -r "$backupName"
-    cd ..
-}
-
 # copy files to local locations
 function copyToLocalLocation {
-    log "Moving the archive to the backup location"
     for path in ${localBackupPath[@]}; do
+        log "Sending archive to $path"
         rsync --recursive --times --include='*.tar.7z' --exclude='*' "$stagingArea/" "$path" --quiet
         if [[ $? -ne 0 ]]; then
             log "Something went wrong in the copying process, check the log \naborting..."
             exit 1
         fi
     done
-    rm -r $stagingArea/*
 }
 
 # clean local locations
@@ -186,9 +198,9 @@ function cleanLocalLocation {
             done < <(ls -tp "$path" |  grep -E '*\.tar\.7z|*\.tar\.gz' | tail -n +$tailN)
 
             if (( ${#removeList[@]} )); then
-                log "Removing old backups:"
+                log "Removing old archives:"
                 for i in "${removeList[@]}"; do
-                    log "    Removing $i"
+                    log "    Removing $path/$i"
                     rm "$path/$i"
                 done
             fi
@@ -213,11 +225,11 @@ function setPerms {
 # mount the share
 function connectToRemoteLocation {
     umount "$mountPath" --quiet # in case previous run got stuck
-    log "Mounting backup share"
+    log "Mounting CIFS location: $shareLocation"
     mkdir -p "$mountPath"
     /usr/sbin/mount.cifs "$shareLocation" "$mountPath" -o username="$uname",password="$sharePasswd"
     if [[ $? -ne 0 ]]; then
-        log "Backup location is unavailable \naborting..."
+        log "CIFS location is unavailable \naborting..."
         unmount
         exit 1
     fi
@@ -225,8 +237,8 @@ function connectToRemoteLocation {
 
 # moving archive(s) to the backup location
 function sendToRemoteLocation {
-    log "Moving the archive to the backup location"
-    rsync --remove-source-files --recursive --times --include='*.tar.7z' --exclude='*' "$stagingArea/" "$mountPath" --quiet
+    log "Sending the archive to CIFS location: $shareLocation"
+    rsync --recursive --times --include='*.tar.7z' --exclude='*' "$stagingArea/" "$mountPath" --quiet
     if [[ $? -ne 0 ]]; then
         log "Something went wrong in the copying process, check the log \naborting..."
         unmount
@@ -244,18 +256,25 @@ function cleanRemoteLocation {
         done < <(ls -tp "$mountPath" |  grep -E '*\.tar\.7z|*\.tar\.gz' | tail -n +$tailN)
 
         if (( ${#removeList[@]} )); then
-            log "Removing old backups:"
+            log "Removing old archives:"
             for i in "${removeList[@]}"; do
-                log "    Removing $i"
+                log "    Removing $path/$i"
                 rm "$mountPath/$i"
             done
         fi
     fi
 }
 
+# cleanup staging area
+function cleanStage {
+    log "Cleaning stage: removing $backupName"
+    rm -r "$backupPath"
+    rm "$backupPath.tar.7z"
+}
+
 # unmount the share
 function disconnectFromRemoteLocation {
-    log "Unmounting backup share"
+    log "Unmounting CIFS location: $shareLocation"
     unmount
 }
 
@@ -294,3 +313,5 @@ exit 0
 #          set 'archivePaswd' to blank to disable encryption
 # 0.21 fixed residual files sometimes staying in staging area
 # 0.22 added Local location, CIFS location is now optional
+# 0.23 now can do send to both local and remote locations, now uses absolute paths
+#      fixed testConfig
