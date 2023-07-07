@@ -1,41 +1,32 @@
 # --------------------------------------------------------------------------------------------------------------- #
 # ENABLE CIFS BACKUP LOCATION
-useCIFS=0
+ENABLE_CIFS=0
 
-
-# network location of smb share
-shareLocation=""
-# path to mount backup share to
-mountPath=""
+# network location of smb share ("//192.168.0.150/backup")
+CIFS_LOCATION=""
+# path to mount backup share to ("/mnt/backup")
+CIFS_MOUNT_PATH=""
 # smb share credentials
-uname=""
-sharePasswd=""
+CIFS_UNAME=""
+CIFS_PASSWD=""
 
 # --------------------------------------------------------------------------------------------------------------- #
 # ENABLE LOCAL BACKUP LOCATION
-useLocal=1
+ENABLE_LOCAL=1
 
 # local backup locations
 # !string array! (to allow multiple locations)
-# EXAMPLE: localBackupPath=("/var/backup" "/media/hd2/backup")
-localBackupPath=("")
+# EXAMPLE: LOCAL_PATH=("/var/backup" "/media/hd2/backup")
+LOCAL_PATH=("")
 
+# --------------------------------------------------------------------------------------------------------------- #
 # archive password
-archivePasswd=""
-
-# directory where everything is moved to before
-# compression and transfer to the backup location
-stagingArea="staging"
-# list of stuff to backup
-includeList="include-list"
-# location of exclude file
-excludeList="exclude-list"
+ARCHIVE_PASSWD=""
 
 # amount of backups to keep
-backupsToKeep=30
-
-backupName=$(date +%Y_%m_%d_%H_%M_%S)
+ARCHIVES_TO_KEEP=30
+ARCHIVE_NAME=$(date +%Y_%m_%d_%H_%M_%S)
 
 # set perms
-setPerms=0
-permsUser=""
+SET_PERMS=0
+PERMS_UNAME=""

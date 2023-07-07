@@ -1,4 +1,4 @@
-config.sh
+config.sh*
 staging/*
 include-list
 exclude-list
